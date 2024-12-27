@@ -85,6 +85,8 @@ log_sources = [
     "RAG",
     "WEBHOOK",
     "SOCKET",
+    "PIPELINES",
+    "VISUALIZATION"
 ]
 
 SRC_LOG_LEVELS = {}
@@ -98,6 +100,20 @@ for source in log_sources:
 
 log.setLevel(SRC_LOG_LEVELS["CONFIG"])
 
+# Add specific logging format for pipelines and visualization
+logging.getLogger('pipelines').setLevel(logging.INFO)
+logging.getLogger('visualization').setLevel(logging.INFO)
+
+# Create a custom formatter
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# Create and configure handlers
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+
+# Add handlers to loggers
+logging.getLogger('pipelines').addHandler(console_handler)
+logging.getLogger('visualization').addHandler(console_handler)
 
 WEBUI_NAME = os.environ.get("WEBUI_NAME", "Open WebUI")
 if WEBUI_NAME != "Open WebUI":
