@@ -13,6 +13,7 @@
 		temporaryChatEnabled,
 		user
 	} from '$lib/stores';
+	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
@@ -26,6 +27,53 @@
 	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
 
 	import PencilSquare from '../icons/PencilSquare.svelte';
+
+	import { createEventDispatcher } from 'svelte';
+
+	const dispatch = createEventDispatcher();
+	let fileInput: HTMLInputElement;
+	let isUploading = false;
+
+	async function handleFileUpload(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		
+		if (!file || !file.name.endsWith('.csv')) {
+			toast.error('CSV 파일만 업로드 가능합니다.');
+			return;
+		}
+
+		const formData = new FormData();
+		formData.append('file', file);
+
+		isUploading = true;
+		try {
+			const response = await fetch(`${WEBUI_BASE_URL}/api/v1/pipelines/upload-csv`, {
+				method: 'POST',
+				headers: {
+					...(localStorage.token && { authorization: `Bearer ${localStorage.token}` })
+				},
+				body: formData
+			});
+
+			if (!response.ok) {
+				const error = await response.text();
+				throw new Error(error);
+			}
+
+			const result = await response.json();
+			toast.success('파일이 성공적으로 업로드되었습니다.');
+			dispatch('csvUploaded', result);
+		} catch (error) {
+			console.error('파일 업로드 오류:', error);
+			toast.error(error instanceof Error ? error.message : '파일 업로드 중 오류가 발생했습니다.');
+		} finally {
+			isUploading = false;
+			if (fileInput) {
+				fileInput.value = '';
+			}
+		}
+	}
 
 	const i18n = getContext('i18n');
 
@@ -80,6 +128,34 @@
 			</div>
 
 			<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
+				<!-- CSV 업로드 버튼 추가 -->
+				<input
+					type="file"
+					accept=".csv"
+					style="display: none"
+					bind:this={fileInput}
+					on:change={handleFileUpload}
+				/>
+				
+				<Tooltip content="CSV 파일 업로드">
+					<button
+						class="flex cursor-pointer px-2 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-850 transition"
+							disabled={isUploading}
+							on:click={() => fileInput?.click()}
+					>
+						<div class="m-auto self-center">
+							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+								<polyline points="17 8 12 3 7 8"/>
+								<line x1="12" y1="3" x2="12" y2="15"/>
+							</svg>
+							{#if isUploading}
+								<span class="ml-1 text-xs">업로드 중...</span>
+							{/if}
+						</div>
+					</button>
+				</Tooltip>
+
 				<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 				{#if shareEnabled && chat && (chat.id || $temporaryChatEnabled)}
 					<Menu

@@ -16,6 +16,7 @@ import requests
 from pydantic import BaseModel
 from starlette.responses import FileResponse
 from typing import Optional
+import json
 
 from open_webui.env import SRC_LOG_LEVELS
 from open_webui.config import CACHE_DIR
@@ -244,6 +245,66 @@ async def upload_pipeline(
         # Ensure the file is deleted after the upload is completed or on failure
         if os.path.exists(file_path):
             os.remove(file_path)
+
+
+@router.post("/upload-csv")
+async def upload_csv_file(
+    request: Request,
+    file: UploadFile = File(...),
+    user=Depends(get_admin_user),
+):
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV 파일만 업로드 가능합니다."
+        )
+
+    try:
+        # pipelines 서버로 파일 전송
+        pipelines_url = 'http://localhost:9099'  # 환경 변수에서 설정
+        if not pipelines_url:
+            raise HTTPException(
+                status_code=500,
+                detail="Pipelines 서버 URL이 설정되지 않았습니다."
+            )
+
+        # 파일 전송
+        files = {"file": (file.filename, file.file, "text/csv")}
+        response = requests.post(
+            f"{pipelines_url}/upload-csv",
+            files=files
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Pipelines 서버 오류: {response.text}"
+            )
+
+        # 파일 업로드 성공 후 data_analysis_agent 재구동
+        restart_response = requests.post(
+            f"{pipelines_url}/restart-agent",
+            headers={"Content-Type": "application/json"}
+        )
+
+        if restart_response.status_code != 200:
+            raise HTTPException(
+                status_code=restart_response.status_code,
+                detail=f"에이전트 재시작 오류: {restart_response.text}"
+            )
+
+        return response.json()
+
+    except requests.RequestException as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipelines 서버 연결 오류: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"파일 업로드 중 오류가 발생했습니다: {str(e)}"
+        )
 
 
 class AddPipelineForm(BaseModel):

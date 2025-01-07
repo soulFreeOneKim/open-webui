@@ -14,6 +14,10 @@
 	import Markdown from '../Messages/Markdown.svelte';
 	import Skeleton from '../Messages/Skeleton.svelte';
 
+	import { createEventDispatcher } from 'svelte';
+	import { Button } from 'flowbite-svelte';
+	import { Upload } from 'lucide-svelte';
+
 	export let id = '';
 	export let model = null;
 	export let messages = [];
@@ -217,6 +221,48 @@
 		floatingInput = false;
 		floatingInputValue = '';
 	};
+
+	const dispatch = createEventDispatcher();
+	let fileInput: HTMLInputElement;
+	let isUploading = false;
+
+	async function handleFileUpload(event: Event) {
+		const target = event.target as HTMLInputElement;
+		const file = target.files?.[0];
+		
+		if (!file || !file.name.endsWith('.csv')) {
+			toast.error('CSV 파일만 업로드 가능합니다.');
+			return;
+		}
+
+		const formData = new FormData();
+		formData.append('file', file);
+
+		isUploading = true;
+		try {
+			const response = await fetch('/api/pipelines/upload-csv', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!response.ok) {
+				const error = await response.text();
+				throw new Error(error);
+			}
+
+			const result = await response.json();
+			toast.success('파일이 성공적으로 업로드되었습니다.');
+			dispatch('csvUploaded', result);
+		} catch (error) {
+			console.error('파일 업로드 오류:', error);
+			toast.error(error instanceof Error ? error.message : '파일 업로드 중 오류가 발생했습니다.');
+		} finally {
+			isUploading = false;
+			if (fileInput) {
+				fileInput.value = '';
+			}
+		}
+	}
 </script>
 
 <div
