@@ -12,7 +12,7 @@
 	export let content;
 	export let history;
 	export let model = null;
-	export let sources = null;
+	export let sources = null; 
 
 	export let save = false;
 	export let floatingButtons = true;
@@ -107,59 +107,218 @@
 			document.removeEventListener('keydown', keydownHandler);
 		}
 	});
+
+	export let message;
+
+	const splitMessageBlocks = (content) => {
+		if (!content) return [];
+		const blocks = [];
+		let currentBlock = {
+			type: 'default',
+			content: ''
+		};
+
+		const lines = content.split('\n');
+		let isInToolSection = false;
+		let isInResultSection = false;
+
+		for (let line of lines) {
+			if (line.includes('🤔 분석을 시작합니다')) {
+				if (currentBlock.content) blocks.push(currentBlock);
+				currentBlock = { type: 'start', content: line };
+				blocks.push(currentBlock);
+				currentBlock = { type: 'default', content: '' };
+			}
+			else if (line.includes('🔧 도구를 실행합니다')) {
+				if (currentBlock.content) blocks.push(currentBlock);
+				currentBlock = { type: 'tool-header', content: line };
+				blocks.push(currentBlock);
+				isInToolSection = true;
+				currentBlock = { type: 'tool-content', content: '' };
+			}
+			else if (line.includes('📊 분석 결과')) {
+				if (currentBlock.content) blocks.push(currentBlock);
+				currentBlock = { type: 'result-header', content: line };
+				blocks.push(currentBlock);
+				isInToolSection = false;
+				isInResultSection = true;
+				currentBlock = { type: 'result-content', content: '' };
+			}
+			else if (line.includes('✅ 분석이 완료되었습니다')) {
+				if (currentBlock.content) blocks.push(currentBlock);
+				currentBlock = { type: 'complete', content: line };
+				blocks.push(currentBlock);
+				isInToolSection = false;
+				isInResultSection = false;
+				currentBlock = { type: 'default', content: '' };
+			}
+			else {
+				if (currentBlock.content) currentBlock.content += '\n';
+				currentBlock.content += line;
+			}
+		}
+		if (currentBlock.content) blocks.push(currentBlock);
+		return blocks;
+	};
+
+	const getStyleClass = (type) => {
+		const baseClass = 'p-4 rounded-lg mb-2 transition-all duration-300';
+		switch(type) {
+			case 'start':
+				return `${baseClass} bg-gray-100 border-l-4 border-gray-500`;
+			case 'tool-header':
+				return `${baseClass} bg-blue-100 border-l-4 border-blue-500`;
+			case 'tool-content':
+				return `${baseClass} bg-blue-50`;
+			case 'result-header':
+				return `${baseClass} bg-yellow-100 border-l-4 border-yellow-500`;
+			case 'result-content':
+				return `${baseClass} bg-yellow-50`;
+			case 'complete':
+				return `${baseClass} bg-green-100 border-l-4 border-green-500`;
+			default:
+				return '';
+		}
+	};
+
+	$: messageBlocks = splitMessageBlocks(content);
+
+	let isLoading = true;
+	let currentStep = '';
+	let dots = '';
+	let dotsInterval;
+
+	onMount(() => {
+		dotsInterval = setInterval(() => {
+			dots = dots.length >= 3 ? '' : dots + '.';
+		}, 500);
+
+		// 단계별 로딩 시레이션
+		setTimeout(() => {
+			currentStep = '분석을 시작합니다';
+			setTimeout(() => {
+				currentStep = '도구를 실행합니다';
+				setTimeout(() => {
+					currentStep = '분석 결과를 생성합니다';
+					setTimeout(() => {
+						isLoading = false;
+						if (dotsInterval) clearInterval(dotsInterval);
+					}, 1000);
+				}, 1000);
+			}, 1000);
+		}, 500);
+	});
+
+	onDestroy(() => {
+		if (dotsInterval) clearInterval(dotsInterval);
+	});
 </script>
 
+<style>
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes slideIn {
+		from {
+			opacity: 0;
+			transform: translateY(-10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	:global(.animate-fade-in) {
+		animation: fadeIn 0.5s ease-in-out forwards;
+	}
+
+	:global(.animate-slide-in) {
+		animation: slideIn 0.5s ease-in-out forwards;
+	}
+
+	:global(.delay-100) {
+		animation-delay: 100ms;
+	}
+</style>
+
 <div bind:this={contentContainerElement}>
-	<Markdown
-		{id}
-		{content}
-		{model}
-		{save}
-		sourceIds={(sources ?? []).reduce((acc, s) => {
-			let ids = [];
-			s.document.forEach((document, index) => {
-				const metadata = s.metadata?.[index];
-				const id = metadata?.source ?? 'N/A';
+	{#if isLoading}
+		<div class="p-2 text-gray-500">
+			{currentStep}{dots}
+		</div>
+	{:else}
+		{#each messageBlocks as block}
+			{#if ['start', 'tool-header', 'result-header', 'complete'].includes(block.type)}
+				<div class={getStyleClass(block.type)}>
+					<div class="flex items-center">
+						<span>{block.content}{!isLoading && block.type !== 'complete' ? dots : ''}</span>
+					</div>
+				</div>
+			{:else if ['tool-content', 'result-content'].includes(block.type)}
+				<div class={getStyleClass(block.type)}>
+					<div class="markdown-body">
+						<Markdown
+							{id}
+							content={block.content}
+							{model}
+							{save}
+							sourceIds={(sources ?? []).reduce((acc, s) => {
+								let ids = [];
+								s.document.forEach((document, index) => {
+									const metadata = s.metadata?.[index];
+									const id = metadata?.source ?? 'N/A';
 
-				if (metadata?.name) {
-					ids.push(metadata.name);
-					return ids;
-				}
+									if (metadata?.name) {
+										ids.push(metadata.name);
+										return ids;
+									}
 
-				if (id.startsWith('http://') || id.startsWith('https://')) {
-					ids.push(id);
-				} else {
-					ids.push(s?.source?.name ?? id);
-				}
+									if (id.startsWith('http://') || id.startsWith('https://')) {
+										ids.push(id);
+									} else {
+										ids.push(s?.source?.name ?? id);
+									}
 
-				return ids;
-			});
+									return ids;
+								});
 
-			acc = [...acc, ...ids];
+								acc = [...acc, ...ids];
 
-			// remove duplicates
-			return acc.filter((item, index) => acc.indexOf(item) === index);
-		}, [])}
-		{onSourceClick}
-		on:update={(e) => {
-			dispatch('update', e.detail);
-		}}
-		on:code={(e) => {
-			const { lang, code } = e.detail;
+								// remove duplicates
+								return acc.filter((item, index) => acc.indexOf(item) === index);
+							}, [])}
+							{onSourceClick}
+							on:update={(e) => {
+								dispatch('update', e.detail);
+							}}
+							on:code={(e) => {
+								const { lang, code } = e.detail;
 
-			if (
-				(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
-				!$mobile &&
-				$chatId
-			) {
-				showArtifacts.set(true);
-				showControls.set(true);
-			}
-		}}
-	/>
+								if (
+									(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
+									!$mobile &&
+									$chatId
+								) {
+									showArtifacts.set(true);
+									showControls.set(true);
+								}
+							}}
+						/>
+					</div>
+				</div>
+			{/if}
+		{/each}
+	{/if}
 </div>
 
-{#if floatingButtons && model}
+{#if floatingButtons && model}	
 	<FloatingButtons
 		bind:this={floatingButtonsElement}
 		{id}
