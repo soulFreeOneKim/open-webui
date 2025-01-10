@@ -121,6 +121,7 @@
 		const lines = content.split('\n');
 		let isInToolSection = false;
 		let isInResultSection = false;
+		let isInObservationSection = false;
 
 		for (let line of lines) {
 			if (line.includes('🤔 분석을 시작합니다')) {
@@ -134,13 +135,23 @@
 				currentBlock = { type: 'tool-header', content: line };
 				blocks.push(currentBlock);
 				isInToolSection = true;
+				isInObservationSection = false;
 				currentBlock = { type: 'tool-content', content: '' };
+			}
+			else if (line.includes('👀 관찰 결과')) {
+				if (currentBlock.content) blocks.push(currentBlock);
+				currentBlock = { type: 'observation-header', content: line };
+				blocks.push(currentBlock);
+				isInToolSection = false;
+				isInObservationSection = true;
+				currentBlock = { type: 'observation-content', content: '' };
 			}
 			else if (line.includes('📊 분석 결과')) {
 				if (currentBlock.content) blocks.push(currentBlock);
 				currentBlock = { type: 'result-header', content: line };
 				blocks.push(currentBlock);
 				isInToolSection = false;
+				isInObservationSection = false;
 				isInResultSection = true;
 				currentBlock = { type: 'result-content', content: '' };
 			}
@@ -149,6 +160,7 @@
 				currentBlock = { type: 'complete', content: line };
 				blocks.push(currentBlock);
 				isInToolSection = false;
+				isInObservationSection = false;
 				isInResultSection = false;
 				currentBlock = { type: 'default', content: '' };
 			}
@@ -170,6 +182,10 @@
 				return `${baseClass} bg-blue-100 border-l-4 border-blue-500`;
 			case 'tool-content':
 				return `${baseClass} bg-blue-50`;
+			case 'observation-header':
+				return `${baseClass} bg-purple-100 border-l-4 border-purple-500`;
+			case 'observation-content':
+				return `${baseClass} bg-purple-50`;
 			case 'result-header':
 				return `${baseClass} bg-yellow-100 border-l-4 border-yellow-500`;
 			case 'result-content':
@@ -181,37 +197,22 @@
 		}
 	};
 
-	$: messageBlocks = splitMessageBlocks(content);
-
-	let isLoading = true;
-	let currentStep = '';
 	let dots = '';
 	let dotsInterval;
 
 	onMount(() => {
 		dotsInterval = setInterval(() => {
-			dots = dots.length >= 3 ? '' : dots + '.';
-		}, 500);
-
-		// 단계별 로딩 시레이션
-		setTimeout(() => {
-			currentStep = '분석을 시작합니다';
-			setTimeout(() => {
-				currentStep = '도구를 실행합니다';
-				setTimeout(() => {
-					currentStep = '분석 결과를 생성합니다';
-					setTimeout(() => {
-						isLoading = false;
-						if (dotsInterval) clearInterval(dotsInterval);
-					}, 1000);
-				}, 1000);
-			}, 1000);
+			dots = dots.length >= 6 ? '' : dots + '.';
 		}, 500);
 	});
 
 	onDestroy(() => {
 		if (dotsInterval) clearInterval(dotsInterval);
 	});
+
+	$: messageBlocks = splitMessageBlocks(content);
+	$: lastMessageType = messageBlocks.length > 0 ? messageBlocks[messageBlocks.length - 1].type : null;
+	$: isWaitingForNext = lastMessageType && ['start', 'tool-header', 'result-header'].includes(lastMessageType);
 </script>
 
 <style>
@@ -249,73 +250,67 @@
 </style>
 
 <div bind:this={contentContainerElement}>
-	{#if isLoading}
-		<div class="p-2 text-gray-500">
-			{currentStep}{dots}
-		</div>
-	{:else}
-		{#each messageBlocks as block}
-			{#if ['start', 'tool-header', 'result-header', 'complete'].includes(block.type)}
-				<div class={getStyleClass(block.type)}>
-					<div class="flex items-center">
-						<span>{block.content}{!isLoading && block.type !== 'complete' ? dots : ''}</span>
-					</div>
+	{#each messageBlocks as block}
+		{#if ['start', 'tool-header', 'observation-header', 'result-header', 'complete'].includes(block.type)}
+			<div class={getStyleClass(block.type)}>
+				<div class="flex items-center">
+					<span>{block.content}{block === messageBlocks[messageBlocks.length - 1] && isWaitingForNext ? dots : ''}</span>
 				</div>
-			{:else if ['tool-content', 'result-content'].includes(block.type)}
-				<div class={getStyleClass(block.type)}>
-					<div class="markdown-body">
-						<Markdown
-							{id}
-							content={block.content}
-							{model}
-							{save}
-							sourceIds={(sources ?? []).reduce((acc, s) => {
-								let ids = [];
-								s.document.forEach((document, index) => {
-									const metadata = s.metadata?.[index];
-									const id = metadata?.source ?? 'N/A';
+			</div>
+		{:else if ['tool-content', 'observation-content', 'result-content'].includes(block.type)}
+			<div class={getStyleClass(block.type)}>
+				<div class="markdown-body">
+					<Markdown
+						{id}
+						content={block.content}
+						{model}
+						{save}
+						sourceIds={(sources ?? []).reduce((acc, s) => {
+							let ids = [];
+							s.document.forEach((document, index) => {
+								const metadata = s.metadata?.[index];
+								const id = metadata?.source ?? 'N/A';
 
-									if (metadata?.name) {
-										ids.push(metadata.name);
-										return ids;
-									}
-
-									if (id.startsWith('http://') || id.startsWith('https://')) {
-										ids.push(id);
-									} else {
-										ids.push(s?.source?.name ?? id);
-									}
-
+								if (metadata?.name) {
+									ids.push(metadata.name);
 									return ids;
-								});
-
-								acc = [...acc, ...ids];
-
-								// remove duplicates
-								return acc.filter((item, index) => acc.indexOf(item) === index);
-							}, [])}
-							{onSourceClick}
-							on:update={(e) => {
-								dispatch('update', e.detail);
-							}}
-							on:code={(e) => {
-								const { lang, code } = e.detail;
-
-								if (
-									(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
-									!$mobile &&
-									$chatId
-								) {
-									showArtifacts.set(true);
-									showControls.set(true);
 								}
-							}}
-						/>
-					</div>
+
+								if (id.startsWith('http://') || id.startsWith('https://')) {
+									ids.push(id);
+								} else {
+									ids.push(s?.source?.name ?? id);
+								}
+
+								return ids;
+							});
+
+							acc = [...acc, ...ids];
+
+							// remove duplicates
+							return acc.filter((item, index) => acc.indexOf(item) === index);
+						}, [])}
+						{onSourceClick}
+						on:update={(e) => {
+							dispatch('update', e.detail);
+						}}
+						on:code={(e) => {
+							const { lang, code } = e.detail;
+
+							if (
+								(['html', 'svg'].includes(lang) || (lang === 'xml' && code.includes('svg'))) &&
+								!$mobile &&
+								$chatId
+							) {
+								showArtifacts.set(true);
+								showControls.set(true);
+							}
+						}}
+					/>
 				</div>
-			{/if}
-		{/each}
-	{/if}
+			</div>
+		{/if}
+	{/each}
 </div>
 
 {#if floatingButtons && model}	
