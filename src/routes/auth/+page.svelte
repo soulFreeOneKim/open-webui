@@ -82,14 +82,18 @@
 	};
 
 	const checkOauthCallback = async () => {
+		console.log('[auth] checkOauthCallback page: ', $page);
+		console.log('[auth] checkOauthCallback page.url: ', $page.url);
 		if (!$page.url.hash) {
 			return;
 		}
 		const hash = $page.url.hash.substring(1);
+		console.log('[auth] checkOauthCallback hash: ', hash);
 		if (!hash) {
 			return;
 		}
 		const params = new URLSearchParams(hash);
+		console.log('[auth] checkOauthCallback params: ', params);
 		const token = params.get('token');
 		if (!token) {
 			return;
@@ -108,11 +112,12 @@
 	let onboarding = false;
 
 	onMount(async () => {
+		console.log('[auth] onMount : ', $user);
 		if ($user !== undefined) {
-			await goto('/');
+			await goto('/pipeline-select');
 		}
 		await checkOauthCallback();
-
+		console.log('[auth] onMount : $config : ', $config);
 		loaded = true;
 		if (($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false) {
 			await signInHandler();

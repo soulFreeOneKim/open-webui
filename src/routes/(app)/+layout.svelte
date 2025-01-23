@@ -49,53 +49,60 @@
 	let loaded = false;
 	let DB = null;
 	let localDBChats = [];
-
 	let version;
 
 	onMount(async () => {
+		console.log('[(app)+layout] onMount');
 		try {
 			// 사용자 상태가 완전히 초기화될 때까지 대기
 			await tick();
 			
 			if ($user === undefined) {
-				console.log('user is undefined');
+				console.log('[(app)+layout] $user is undefined');
 				await goto('/auth');
 			} else if (['user', 'admin'].includes($user.role)) {
-				console.log('user is defined');
-				console.debug('user', $user);
+				console.log('[(app)+layout] user is defined');
+				console.log('[(app)+layout] $user : ', $user);
+				console.log('[(app)+layout] $page : ', $page);
 				
-				// 현재 경로가 메인 페이지이거나 (app) 레이아웃 내부인 경우 pipeline-select로 리다이렉트
-				const currentPath = $page.url.pathname;
-				// if (currentPath === '/' || currentPath.startsWith('/(app)')) {
-				// 	await goto('/pipeline-select', { replaceState: true });
-				// 	return;
-				// }
+				// 파이프라인이 선택되어 있는지 확인
+				const selectedPipeline = localStorage.getItem('selectedPipeline');
+            
+				// 현재 경로가 루트(/)이고 파이프라인이 선택되지 않은 경우
+				if ($page.url.pathname === '/' && !selectedPipeline) {
+					console.log('[(app)+layout] pipeline not selected, redirecting to pipeline-select');
+					await goto('/pipeline-select');
+					return;
+				}
 
 				try {
 					// Check if IndexedDB exists
 					DB = await openDB('Chats', 1);
+					console.log('[(app)+layout] DB : ', DB);
 
 					if (DB) {
 						const chats = await DB.getAllFromIndex('chats', 'timestamp');
 						localDBChats = chats.map((item, idx) => chats[chats.length - 1 - idx]);
-						console.log('localDBChats', localDBChats);
+						console.log('[(app)+layout] localDBChats : ', localDBChats);
 
 						if (localDBChats.length === 0) {
 							await deleteDB('Chats');
+							console.log('[(app)+layout] deleteDB : ', DB);
 						}
 					}
 
-					console.log(DB);
+					console.log('[(app)+layout] DB : ', DB);
 				} catch (error) {
 					// IndexedDB Not Found
-					console.log('DB not found');
+					console.log('[(app)+layout] DB not found');
 				}
-
+				console.log('[(app)+layout] settings : ', $settings);
+				
 				const userSettings = await getUserSettings(localStorage.token).catch((error) => {
-					console.error(error);
+					console.error('[(app)+layout] error : ', error);
 					return null;
 				});
-
+				console.log('[(app)+layout] userSettings : ', userSettings);
 				if (userSettings) {
 					settings.set(userSettings.ui);
 				} else {
@@ -111,8 +118,11 @@
 				}
 
 				models.set(await getModels(localStorage.token));
+				console.log('[(app)+layout] models : ', models);
 				banners.set(await getBanners(localStorage.token));
+				console.log('[(app)+layout] banners : ', banners);
 				tools.set(await getTools(localStorage.token));
+				console.log('[(app)+layout] tools : ', tools);
 
 				document.addEventListener('keydown', async function (event) {
 					const isCtrlPressed = event.ctrlKey || event.metaKey; // metaKey is for Cmd key on Mac
@@ -196,10 +206,13 @@
 				});
 
 				if ($user.role === 'admin' && ($settings?.showChangelog ?? true)) {
+					console.log('[(app)+layout] $settings?.version : ', $settings?.version);
+					console.log('[(app)+layout] $config.version : ', $config.version);
 					showChangelog.set($settings?.version !== $config.version);
 				}
 
 				if ($page.url.searchParams.get('temporary-chat') === 'true') {
+					console.log('[(app)+layout] temporaryChatEnabled.set(true)');
 					temporaryChatEnabled.set(true);
 				}
 
@@ -233,6 +246,7 @@
 				latest: WEBUI_VERSION
 			};
 		});
+		console.log('[(app)+layout] version : ', version);
 	};
 </script>
 

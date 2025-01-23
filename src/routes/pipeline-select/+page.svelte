@@ -58,33 +58,13 @@
         try {
             // 파이프라인 정보 저장
             localStorage.setItem('selectedPipeline', JSON.stringify(pipeline));
-            
-            // 선택된 모델 저장
-            if (pipeline.modelId) {
-                // 모델 목록에서 해당 ID를 가진 모델 찾기
-                const modelMatch = $models.find(model => model.id === pipeline.modelId);
-                if (modelMatch) {
-                    const selectedModels = [modelMatch.id];
-                    console.log('selectedModels', selectedModels);
-                    
-                    // localStorage에 저장
-                    localStorage.setItem('selectedModels', JSON.stringify(selectedModels));
-                    
-                    // 사용자 설정에도 저장
-                    if ($settings) {
-                        settings.set({ ...$settings, models: selectedModels });
-                    }
-                }
-            }
+            console.log('[pipeline-select] localStorage : ', localStorage);
 
             // goto 함수로 먼저 시도
             try {
-                console.log('goto /');
-                await goto('/', { replaceState: true });
+                await goto('/');
             } catch (error) {
                 console.error('goto failed:', error);
-                // goto가 실패하면 window.location 사용
-                window.location.href = '/';
             }
         } catch (error) {
             console.error('파이프라인 선택 오류:', error);
@@ -93,7 +73,7 @@
 
     // 컴포넌트 마운트 시 사용 가능한 모델 목록 확인
     onMount(async () => {
-        console.log('Available models:', $models);
+        console.log('[pipeline-select] onMount : localStorage', localStorage);
     });
 </script>
 

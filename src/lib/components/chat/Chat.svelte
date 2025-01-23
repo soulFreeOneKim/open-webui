@@ -131,7 +131,7 @@
 
 	$: if (chatIdProp) {
 		(async () => {
-			console.log(chatIdProp);
+			console.log('[chat] chatIdProp : ', chatIdProp);
 
 			prompt = '';
 			files = [];
@@ -173,7 +173,8 @@
 			return;
 		}
 		sessionStorage.selectedModels = JSON.stringify(selectedModels);
-		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
+		console.log('[chat] saveSessionSelectedModels : selectedModels : ', selectedModels);
+		console.log('[chat] saveSessionSelectedModels : sessionStorage.selectedModels : ', sessionStorage.selectedModels);
 	};
 
 	$: if (selectedModels) {
@@ -367,10 +368,12 @@
 	};
 
 	onMount(async () => {
-		console.log('mounted');
+		console.log('[chat] onMount');
+		console.log('[chat] onMount : localStorage : ', localStorage);
 		window.addEventListener('message', onMessageHandler);
 		$socket?.on('chat-events', chatEventHandler);
 
+		console.log('[chat] onMount : $chatId : ', $chatId);
 		if (!$chatId) {
 			chatIdUnsubscriber = chatId.subscribe(async (value) => {
 				if (!value) {
@@ -386,6 +389,7 @@
 		if (localStorage.getItem(`chat-input-${chatIdProp}`)) {
 			try {
 				const input = JSON.parse(localStorage.getItem(`chat-input-${chatIdProp}`));
+				console.log('[chat] onMount : input : ', input);
 				prompt = input.prompt;
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
@@ -617,42 +621,75 @@
 	//////////////////////////
 
 	const initNewChat = async () => {
-		if ($page.url.searchParams.get('models')) {
-			selectedModels = $page.url.searchParams.get('models')?.split(',');
-		} else if ($page.url.searchParams.get('model')) {
-			const urlModels = $page.url.searchParams.get('model')?.split(',');
+		console.log('[chat] initNewChat : $page.url.searchParams.get(\'models\') : ', $page.url.searchParams.get('models'));
 
-			if (urlModels.length === 1) {
-				const m = $models.find((m) => m.id === urlModels[0]);
-				if (!m) {
-					const modelSelectorButton = document.getElementById('model-selector-0-button');
-					if (modelSelectorButton) {
-						modelSelectorButton.click();
-						await tick();
+		// pipeline-select에서 저장된 selectedPipeline 가져오기
+		const storedPipeline = localStorage.getItem('selectedPipeline');
+		console.log('[chat] initNewChat : storedPipeline : ', storedPipeline);
 
-						const modelSelectorInput = document.getElementById('model-search-input');
-						if (modelSelectorInput) {
-							modelSelectorInput.focus();
-							modelSelectorInput.value = urlModels[0];
-							modelSelectorInput.dispatchEvent(new Event('input'));
+		if (storedPipeline) {
+			try {
+				const pipeline_info = JSON.parse(storedPipeline);
+				console.log('[chat] initNewChat : pipeline_info : ', pipeline_info);
+				
+				if (pipeline_info.modelId) {
+					selectedModels = [pipeline_info.modelId];
+					console.log('[chat] initNewChat : selectedModels from pipeline : ', selectedModels);
+
+					// selectedPipeline 제거
+					localStorage.removeItem('selectedPipeline');
+        			console.log('[chat] initNewChat : removed selectedPipeline from localStorage');
+				}
+			} catch (e) {
+				console.error('Error parsing stored pipeline:', e);
+			}
+		}    	
+
+		if (!selectedModels || selectedModels.length === 0) {
+
+			if ($page.url.searchParams.get('models')) {
+				selectedModels = $page.url.searchParams.get('models')?.split(',');
+				console.log('[chat] initNewChat : selectedModels : ', selectedModels);
+			} else if ($page.url.searchParams.get('model')) {
+				const urlModels = $page.url.searchParams.get('model')?.split(',');
+				console.log('[chat] initNewChat : urlModels : ', urlModels);
+
+				if (urlModels.length === 1) {
+					const m = $models.find((m) => m.id === urlModels[0]);
+					if (!m) {
+						const modelSelectorButton = document.getElementById('model-selector-0-button');
+						if (modelSelectorButton) {
+							modelSelectorButton.click();
+							await tick();
+
+							const modelSelectorInput = document.getElementById('model-search-input');
+							if (modelSelectorInput) {
+								modelSelectorInput.focus();
+								modelSelectorInput.value = urlModels[0];
+								modelSelectorInput.dispatchEvent(new Event('input'));
+							}
 						}
+					} else {
+						selectedModels = urlModels;
 					}
 				} else {
 					selectedModels = urlModels;
 				}
 			} else {
-				selectedModels = urlModels;
-			}
-		} else {
-			if (sessionStorage.selectedModels) {
-				selectedModels = JSON.parse(sessionStorage.selectedModels);
-				sessionStorage.removeItem('selectedModels');
-			} else {
-				if ($settings?.models) {
-					selectedModels = $settings?.models;
-				} else if ($config?.default_models) {
-					console.log($config?.default_models.split(',') ?? '');
-					selectedModels = $config?.default_models.split(',');
+				console.log('[chat] initNewChat : sessionStorage.selectedModels : ', sessionStorage.selectedModels);
+				if (sessionStorage.selectedModels) {
+					selectedModels = JSON.parse(sessionStorage.selectedModels);
+					sessionStorage.removeItem('selectedModels');
+				} else {
+					if ($settings?.models) {
+						console.log('[chat] initNewChat : $settings?.models : ', $settings?.models);
+						selectedModels = $settings?.models;
+						console.log('[chat] initNewChat : selectedModels : ', selectedModels);
+					} else if ($config?.default_models) {
+						console.log('[chat] initNewChat : $config?.default_models : ', $config?.default_models);
+						selectedModels = $config?.default_models.split(',');
+						console.log('[chat] initNewChat : selectedModels : ', selectedModels);
+					}
 				}
 			}
 		}
@@ -665,6 +702,7 @@
 				selectedModels = [''];
 			}
 		}
+
 
 		await showControls.set(false);
 		await showCallOverlay.set(false);
@@ -728,6 +766,8 @@
 		selectedModels = selectedModels.map((modelId) =>
 			$models.map((m) => m.id).includes(modelId) ? modelId : ''
 		);
+
+		console.log('[chat] initNewChat : selectedModels(last): ', selectedModels);
 
 		const userSettings = await getUserSettings(localStorage.token);
 

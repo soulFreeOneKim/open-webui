@@ -64,35 +64,35 @@
 		await socket.set(_socket);
 
 		_socket.on('connect_error', (err) => {
-			console.log('connect_error', err);
+			console.log('[+layout] setupSocket : connect_error', err);
 		});
 
 		_socket.on('connect', () => {
-			console.log('connected', _socket.id);
+			console.log('[+layout] setupSocket : connected', _socket.id);
 		});
 
 		_socket.on('reconnect_attempt', (attempt) => {
-			console.log('reconnect_attempt', attempt);
+			console.log('[+layout] setupSocket : reconnect_attempt', attempt);
 		});
 
 		_socket.on('reconnect_failed', () => {
-			console.log('reconnect_failed');
+			console.log('[+layout] setupSocket : reconnect_failed');
 		});
 
 		_socket.on('disconnect', (reason, details) => {
 			console.log(`Socket ${_socket.id} disconnected due to ${reason}`);
 			if (details) {
-				console.log('Additional details:', details);
+				console.log('[+layout] setupSocket : Additional details:', details);
 			}
 		});
 
 		_socket.on('user-list', (data) => {
-			console.log('user-list', data);
+			console.log('[+layout] setupSocket : user-list', data);
 			activeUserIds.set(data.user_ids);
 		});
 
 		_socket.on('usage', (data) => {
-			console.log('usage', data);
+			console.log('[+layout] setupSocket : usage', data);
 			USAGE_POOL.set(data['models']);
 		});
 	};
@@ -214,9 +214,9 @@
 		let backendConfig = null;
 		try {
 			backendConfig = await getBackendConfig();
-			console.log('Backend config:', backendConfig);
+			console.log('[+layout] Backend config:', backendConfig);
 		} catch (error) {
-			console.error('Error loading backend config:', error);
+			console.error('[+layout] Error loading backend config:', error);
 		}
 		// Initialize i18n even if we didn't get a backend config,
 		// so `/error` can show something that's not `undefined`.
@@ -236,7 +236,9 @@
 		if (backendConfig) {
 			// Save Backend Status to Store
 			await config.set(backendConfig);
+			console.log('[+layout] config : ', $config);
 			await WEBUI_NAME.set(backendConfig.name);
+			console.log('[+layout] WEBUI_NAME : ', $WEBUI_NAME);
 
 			if ($config) {
 				await setupSocket($config.features?.enable_websocket ?? true);
@@ -251,7 +253,6 @@
 					if (sessionUser) {
 						// Save Session User to Store
 						$socket.emit('user-join', { auth: { token: sessionUser.token } });
-
 						$socket?.on('chat-events', chatEventHandler);
 						$socket?.on('channel-events', channelEventHandler);
 
