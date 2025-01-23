@@ -44,7 +44,8 @@
 		extractSentencesForAudio,
 		promptTemplate,
 		splitStream,
-		sleep
+		sleep,
+		removeDetailsWithReasoning
 	} from '$lib/utils';
 
 	import { generateChatCompletion } from '$lib/apis/ollama';
@@ -111,6 +112,7 @@
 	$: selectedModelIds = atSelectedModel !== undefined ? [atSelectedModel.id] : selectedModels;
 
 	let selectedToolIds = [];
+	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
 
 	let chat = null;
@@ -137,6 +139,7 @@
 			files = [];
 			selectedToolIds = [];
 			webSearchEnabled = false;
+			imageGenerationEnabled = false;
 
 			loaded = false;
 
@@ -152,6 +155,7 @@
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
 						webSearchEnabled = input.webSearchEnabled;
+						imageGenerationEnabled = input.imageGenerationEnabled;
 					} catch (e) {}
 				}
 
@@ -319,6 +323,19 @@
 					eventConfirmationMessage = data.message;
 					eventConfirmationInputPlaceholder = data.placeholder;
 					eventConfirmationInputValue = data?.value ?? '';
+				} else if (type === 'notification') {
+					const toastType = data?.type ?? 'info';
+					const toastContent = data?.content ?? '';
+
+					if (toastType === 'success') {
+						toast.success(toastContent);
+					} else if (toastType === 'error') {
+						toast.error(toastContent);
+					} else if (toastType === 'warning') {
+						toast.warning(toastContent);
+					} else {
+						toast.info(toastContent);
+					}
 				} else {
 					console.log('Unknown message type', data);
 				}
@@ -394,11 +411,13 @@
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
 				webSearchEnabled = input.webSearchEnabled;
+				imageGenerationEnabled = input.imageGenerationEnabled;
 			} catch (e) {
 				prompt = '';
 				files = [];
 				selectedToolIds = [];
 				webSearchEnabled = false;
+				imageGenerationEnabled = false;
 			}
 		}
 
@@ -734,6 +753,9 @@
 		if ($page.url.searchParams.get('web-search') === 'true') {
 			webSearchEnabled = true;
 		}
+		if ($page.url.searchParams.get('image-generation') === 'true') {
+			imageGenerationEnabled = true;
+		}
 
 		if ($page.url.searchParams.get('tools')) {
 			selectedToolIds = $page.url.searchParams
@@ -870,7 +892,7 @@
 			session_id: $socket?.id,
 			id: responseMessageId
 		}).catch((error) => {
-			toast.error(error);
+			toast.error(`${error}`);
 			messages.at(-1).error = { content: error };
 
 			return null;
@@ -879,13 +901,16 @@
 		if (res !== null && res.messages) {
 			// Update chat history with the new messages
 			for (const message of res.messages) {
-				history.messages[message.id] = {
-					...history.messages[message.id],
-					...(history.messages[message.id].content !== message.content
-						? { originalContent: history.messages[message.id].content }
-						: {}),
-					...message
-				};
+				if (message?.id) {
+					// Add null check for message and message.id
+					history.messages[message.id] = {
+						...history.messages[message.id],
+						...(history.messages[message.id].content !== message.content
+							? { originalContent: history.messages[message.id].content }
+							: {}),
+						...message
+					};
+				}
 			}
 		}
 
@@ -925,7 +950,7 @@
 			session_id: $socket?.id,
 			id: responseMessageId
 		}).catch((error) => {
-			toast.error(error);
+			toast.error(`${error}`);
 			messages.at(-1).error = { content: error };
 			return null;
 		});
@@ -1388,7 +1413,8 @@
 				history.currentId = responseMessageId;
 
 				// Append messageId to childrenIds of parent message
-				if (parentId !== null) {
+				if (parentId !== null && history.messages[parentId]) {
+					// Add null check before accessing childrenIds
 					history.messages[parentId].childrenIds = [
 						...history.messages[parentId].childrenIds,
 						responseMessageId
@@ -1432,7 +1458,7 @@
 					if ($settings?.memory ?? false) {
 						if (userContext === null) {
 							const res = await queryMemory(localStorage.token, prompt).catch((error) => {
-								toast.error(error);
+								toast.error(`${error}`);
 								return null;
 							});
 							if (res) {
@@ -1518,7 +1544,10 @@
 						}`
 					}
 				: undefined,
-			...createMessagesList(responseMessageId)
+			...createMessagesList(responseMessageId).map((message) => ({
+				...message,
+				content: removeDetailsWithReasoning(message.content)
+			}))
 		]
 			.filter((message) => message?.content?.trim())
 			.map((message, idx, arr) => ({
@@ -1566,9 +1595,10 @@
 							: undefined
 				},
 
-				files: files.length > 0 ? files : undefined,
+				files: (files?.length ?? 0) > 0 ? files : undefined,
 				tool_ids: selectedToolIds.length > 0 ? selectedToolIds : undefined,
 				features: {
+					image_generation: imageGenerationEnabled,
 					web_search: webSearchEnabled
 				},
 
@@ -1865,13 +1895,13 @@
 	}}
 />
 
-{#if !chatIdProp || (loaded && chatIdProp)}
-	<div
-		class="h-screen max-h-[100dvh] {$showSidebar
-			? 'md:max-w-[calc(100%-260px)]'
-			: ''} w-full max-w-full flex flex-col"
-		id="chat-container"
-	>
+<div
+	class="h-screen max-h-[100dvh] transition-width duration-200 ease-in-out {$showSidebar
+		? '  md:max-w-[calc(100%-260px)]'
+		: ' '} w-full max-w-full flex flex-col"
+	id="chat-container"
+>
+	{#if !chatIdProp || (loaded && chatIdProp)}
 		{#if $settings?.backgroundImageUrl ?? null}
 			<div
 				class="absolute {$showSidebar
@@ -1971,6 +2001,7 @@
 								bind:prompt
 								bind:autoScroll
 								bind:selectedToolIds
+								bind:imageGenerationEnabled
 								bind:webSearchEnabled
 								bind:atSelectedModel
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
@@ -2021,6 +2052,7 @@
 								bind:prompt
 								bind:autoScroll
 								bind:selectedToolIds
+								bind:imageGenerationEnabled
 								bind:webSearchEnabled
 								bind:atSelectedModel
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
@@ -2073,5 +2105,5 @@
 				{eventTarget}
 			/>
 		</PaneGroup>
-	</div>
-{/if}
+	{/if}
+</div>
