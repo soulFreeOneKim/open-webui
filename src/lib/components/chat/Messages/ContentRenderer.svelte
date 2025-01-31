@@ -124,52 +124,77 @@
 		let isInObservationSection = false;
 
 		for (let line of lines) {
-			if (line.includes('🤔 분석을 시작합니다')) {
-				if (currentBlock.content) blocks.push(currentBlock);
-				currentBlock = { type: 'start', content: line };
-				blocks.push(currentBlock);
-				currentBlock = { type: 'default', content: '' };
-			}
-			else if (line.includes('🔧 도구를 실행합니다')) {
-				if (currentBlock.content) blocks.push(currentBlock);
-				currentBlock = { type: 'tool-header', content: line };
-				blocks.push(currentBlock);
-				isInToolSection = true;
-				isInObservationSection = false;
-				currentBlock = { type: 'tool-content', content: '' };
-			}
-			else if (line.includes('👀 관찰 결과')) {
-				if (currentBlock.content) blocks.push(currentBlock);
-				currentBlock = { type: 'observation-header', content: line };
-				blocks.push(currentBlock);
-				isInToolSection = false;
-				isInObservationSection = true;
-				currentBlock = { type: 'observation-content', content: '' };
-			}
-			else if (line.includes('📊 분석 결과')) {
-				if (currentBlock.content) blocks.push(currentBlock);
-				currentBlock = { type: 'result-header', content: line };
-				blocks.push(currentBlock);
-				isInToolSection = false;
-				isInObservationSection = false;
-				isInResultSection = true;
-				currentBlock = { type: 'result-content', content: '' };
-			}
-			else if (line.includes('✅ 분석이 완료되었습니다')) {
-				if (currentBlock.content) blocks.push(currentBlock);
-				currentBlock = { type: 'complete', content: line };
-				blocks.push(currentBlock);
-				isInToolSection = false;
-				isInObservationSection = false;
-				isInResultSection = false;
-				currentBlock = { type: 'default', content: '' };
-			}
-			else {
-				if (currentBlock.content) currentBlock.content += '\n';
+			console.log('[contentRenderer] currentBlock.content', currentBlock.content);
+			console.log('[contentRenderer] line', line);
+
+			if (!line.includes('🤔') && 
+				!line.includes('🔧') && 
+				!line.includes('👀') && 
+				!line.includes('📊') && 
+				!line.includes('✅')) {
+				
+				// 현재 블록이 비어있지 않으면 새로운 줄 추가
+				if (currentBlock.content) {
+					currentBlock.content += '\n';
+				}
 				currentBlock.content += line;
+				
+				// 현재 블록이 아직 blocks 배열에 추가되지 않았다면 추가
+				if (!blocks.includes(currentBlock)) {
+					blocks.push(currentBlock);
+				}
+        	} else {
+			
+				if (line.includes('🤔 분석을 시작합니다')) {
+					if (currentBlock.content) blocks.push(currentBlock);
+					currentBlock = { type: 'start', content: line };
+					blocks.push(currentBlock);
+					currentBlock = { type: 'default', content: '' };
+				}
+				else if (line.includes('🔧 도구를 실행합니다')) {
+					if (currentBlock.content) blocks.push(currentBlock);
+					currentBlock = { type: 'tool-header', content: line };
+					blocks.push(currentBlock);
+					isInToolSection = true;
+					isInObservationSection = false;
+					currentBlock = { type: 'tool-content', content: '' };
+				}
+				else if (line.includes('👀 관찰 결과')) {
+					if (currentBlock.content) blocks.push(currentBlock);
+					currentBlock = { type: 'observation-header', content: line };
+					blocks.push(currentBlock);
+					isInToolSection = false;
+					isInObservationSection = true;
+					currentBlock = { type: 'observation-content', content: '' };
+				}
+				else if (line.includes('📊 분석 결과')) {
+					if (currentBlock.content) blocks.push(currentBlock);
+					currentBlock = { type: 'result-header', content: line };
+					blocks.push(currentBlock);
+					isInToolSection = false;
+					isInObservationSection = false;
+					isInResultSection = true;
+					currentBlock = { type: 'result-content', content: '' };
+				}
+				else if (line.includes('✅ 분석이 완료되었습니다')) {
+					if (currentBlock.content) blocks.push(currentBlock);
+					currentBlock = { type: 'complete', content: line };
+					blocks.push(currentBlock);
+					isInToolSection = false;
+					isInObservationSection = false;
+					isInResultSection = false;
+					currentBlock = { type: 'default', content: '' };
+				}
+				else {
+					if (currentBlock.content) currentBlock.content += '\n';
+					currentBlock.content += line;
+				}
 			}
 		}
-		if (currentBlock.content) blocks.push(currentBlock);
+		if (currentBlock.content && !blocks.includes(currentBlock)) {
+       	 	blocks.push(currentBlock);
+   	 	}		
+		console.log('[contentRenderer] blocks', blocks);
 		return blocks;
 	};
 
@@ -251,7 +276,18 @@
 
 <div bind:this={contentContainerElement}>
 	{#each messageBlocks as block}
-		{#if ['start', 'tool-header', 'observation-header', 'result-header', 'complete'].includes(block.type)}
+		{#if block.type === 'default'}
+			<div class="markdown-body">
+				<Markdown
+					{id}
+					content={block.content}
+					{model}
+					{save}
+					sourceIds={[]}
+					{onSourceClick}
+				/>
+			</div>
+		{:else if ['start', 'tool-header', 'observation-header', 'result-header', 'complete'].includes(block.type)}
 			<div class={getStyleClass(block.type)}>
 				<div class="flex items-center">
 					<span>{block.content}{block === messageBlocks[messageBlocks.length - 1] && isWaitingForNext ? dots : ''}</span>

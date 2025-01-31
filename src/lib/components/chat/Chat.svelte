@@ -1261,7 +1261,8 @@
 	//////////////////////////
 
 	const submitPrompt = async (userPrompt, { _raw = false } = {}) => {
-		console.log('submitPrompt', userPrompt, $chatId);
+		console.log('[chat][submitPrompt] userPrompt' , userPrompt);
+		console.log('[chat][submitPrompt] $chatId' , $chatId);
 
 		const messages = createMessagesList(history.currentId);
 		const _selectedModels = selectedModels.map((modelId) =>
@@ -2015,6 +2016,8 @@
 									}
 								}}
 								on:upload={async (e) => {
+									console.log('[messageInput] on:upload');
+									console.log('[messageInput] e', e);
 									const { type, data } = e.detail;
 
 									if (type === 'web') {

@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 
-	import DOMPurify from 'dompurify';
-	import { marked } from 'marked';
 
 	import { getContext, tick } from 'svelte';
 	const i18n = getContext('i18n');
@@ -15,8 +13,6 @@
 	import Skeleton from '../Messages/Skeleton.svelte';
 
 	import { createEventDispatcher } from 'svelte';
-	import { Button } from 'flowbite-svelte';
-	import { Upload } from 'lucide-svelte';
 
 	export let id = '';
 	export let model = null;

@@ -174,7 +174,7 @@
 			});
 
 			if (res) {
-				console.log(res);
+				console.log('[MessageInput][uploadFileHandler] res', res);
 				const blob = new Blob([res.text], { type: 'text/plain' });
 				file = blobToFile(blob, `${file.name}.txt`);
 
@@ -185,10 +185,12 @@
 
 		try {
 			// During the file upload, file content is automatically extracted.
+			console.log('[MessageInput][uploadFileHandler] file', file);
+			console.log('[MessageInput][uploadFileHandler] localStorage.token', localStorage.token);
 			const uploadedFile = await uploadFile(localStorage.token, file);
 
 			if (uploadedFile) {
-				console.log('File upload completed:', {
+				console.log('[MessageInput][uploadFileHandler] File upload completed:', {
 					id: uploadedFile.id,
 					name: fileItem.name,
 					collection: uploadedFile?.meta?.collection_name
@@ -217,9 +219,11 @@
 	};
 
 	const inputFilesHandler = async (inputFiles) => {
-		console.log('Input files handler called with:', inputFiles);
+		console.log('[messageInput][inputFilesHandler] Input files handler called with:', inputFiles);
+		console.log('[messageInput][inputFilesHandler] $config ', $config);
+		console.log('[messageInput][inputFilesHandler] $settings ', $settings);
 		inputFiles.forEach((file) => {
-			console.log('Processing file:', {
+			console.log('[messageInput][inputFilesHandler] Processing file:', {
 				name: file.name,
 				type: file.type,
 				size: file.size,
@@ -230,7 +234,7 @@
 				($config?.file?.max_size ?? null) !== null &&
 				file.size > ($config?.file?.max_size ?? 0) * 1024 * 1024
 			) {
-				console.log('File exceeds max size limit:', {
+				console.log('[messageInput][inputFilesHandler] File exceeds max size limit:', {
 					fileSize: file.size,
 					maxSize: ($config?.file?.max_size ?? 0) * 1024 * 1024
 				});

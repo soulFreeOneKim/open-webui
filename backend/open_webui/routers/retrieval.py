@@ -812,19 +812,27 @@ def process_file(
     user=Depends(get_verified_user),
 ):
     try:
+        log.info(f"파일 처리 시작 - form_data: {form_data}")
+        
+        # 파일 ID로 파일 정보 조회
         file = Files.get_file_by_id(form_data.file_id)
+        log.debug(f"조회된 파일 정보: {file}")
 
+        # 컬렉션 이름 설정 - 지정되지 않은 경우 file-{id} 형식으로 자동 생성
         collection_name = form_data.collection_name
-
         if collection_name is None:
             collection_name = f"file-{file.id}"
+        log.info(f"사용할 컬렉션 이름: {collection_name}")
 
         if form_data.content:
-            # Update the content in the file
-            # Usage: /files/{file_id}/data/content/update
-
+            # Case 1: 직접 content가 전달된 경우 (/files/{file_id}/data/content/update)
+            log.info("Case 1: 직접 content 업데이트 처리")
+            
+            # 기존 벡터 DB 컬렉션 삭제
+            log.debug(f"기존 컬렉션 삭제: file-{file.id}")
             VECTOR_DB_CLIENT.delete_collection(collection_name=f"file-{file.id}")
 
+            # 새로운 Document 객체 생성
             docs = [
                 Document(
                     page_content=form_data.content.replace("<br/>", "\n"),
@@ -837,17 +845,24 @@ def process_file(
                     },
                 )
             ]
+            log.debug(f"생성된 Document 객체: {docs}")
 
             text_content = form_data.content
-        elif form_data.collection_name:
-            # Check if the file has already been processed and save the content
-            # Usage: /knowledge/{id}/file/add, /knowledge/{id}/file/update
 
+        elif form_data.collection_name:
+            # Case 2: 기존 처리된 파일을 컬렉션에 추가/업데이트 (/knowledge/{id}/file/add, /knowledge/{id}/file/update)
+            log.info("Case 2: 기존 처리 파일의 컬렉션 추가/업데이트")
+            
+            # 기존 벡터 DB에서 파일 관련 데이터 조회
             result = VECTOR_DB_CLIENT.query(
-                collection_name=f"file-{file.id}", filter={"file_id": file.id}
+                collection_name=f"file-{file.id}", 
+                filter={"file_id": file.id}
             )
+            log.debug(f"벡터 DB 조회 결과: {result}")
 
             if result is not None and len(result.ids[0]) > 0:
+                # 기존 벡터 DB 데이터가 있는 경우
+                log.info("기존 벡터 DB 데이터 존재, Document 객체 재생성")
                 docs = [
                     Document(
                         page_content=result.documents[0][idx],
@@ -856,6 +871,8 @@ def process_file(
                     for idx, id in enumerate(result.ids[0])
                 ]
             else:
+                # 벡터 DB 데이터가 없는 경우 파일 데이터로 생성
+                log.info("벡터 DB 데이터 없음, 파일 데이터로 Document 생성")
                 docs = [
                     Document(
                         page_content=file.data.get("content", ""),
@@ -868,22 +885,32 @@ def process_file(
                         },
                     )
                 ]
+            log.debug(f"생성된 Document 객체: {docs}")
 
             text_content = file.data.get("content", "")
+
         else:
-            # Process the file and save the content
-            # Usage: /files/
+            # Case 3: 새로운 파일 처리 (/files/)
+            log.info("Case 3: 새로운 파일 처리")
+            
             file_path = file.path
             if file_path:
+                # 실제 파일이 존재하는 경우
+                log.info(f"파일 경로 존재, 파일 처리 시작: {file_path}")
                 file_path = Storage.get_file(file_path)
                 loader = Loader(
                     engine=request.app.state.config.CONTENT_EXTRACTION_ENGINE,
                     TIKA_SERVER_URL=request.app.state.config.TIKA_SERVER_URL,
                     PDF_EXTRACT_IMAGES=request.app.state.config.PDF_EXTRACT_IMAGES,
                 )
+                log.debug(f"Loader 설정: {loader}")
+                
                 docs = loader.load(
-                    file.filename, file.meta.get("content_type"), file_path
+                    file.filename, 
+                    file.meta.get("content_type"), 
+                    file_path
                 )
+                log.debug(f"파일 로드 결과: {docs}")
 
                 docs = [
                     Document(
@@ -899,6 +926,8 @@ def process_file(
                     for doc in docs
                 ]
             else:
+                # 파일 데이터만 존재하는 경우
+                log.info("파일 경로 없음, 파일 데이터로 Document 생성")
                 docs = [
                     Document(
                         page_content=file.data.get("content", ""),
@@ -911,18 +940,25 @@ def process_file(
                         },
                     )
                 ]
+            log.debug(f"최종 생성된 Document 객체: {docs}")
             text_content = " ".join([doc.page_content for doc in docs])
 
-        log.debug(f"text_content: {text_content}")
+        # 파일 내용 업데이트
+        log.info("파일 데이터 업데이트 시작")
+        log.debug(f"업데이트할 text_content 길이: {len(text_content)}")
         Files.update_file_data_by_id(
             file.id,
             {"content": text_content},
         )
 
+        # 파일 해시 계산 및 업데이트
         hash = calculate_sha256_string(text_content)
+        log.debug(f"계산된 파일 해시: {hash}")
         Files.update_file_hash_by_id(file.id, hash)
 
         try:
+            # 벡터 DB에 문서 저장
+            log.info("벡터 DB 저장 시작")
             result = save_docs_to_vector_db(
                 request,
                 docs=docs,
@@ -934,8 +970,11 @@ def process_file(
                 },
                 add=(True if form_data.collection_name else False),
             )
+            log.debug(f"벡터 DB 저장 결과: {result}")
 
             if result:
+                # 파일 메타데이터 업데이트
+                log.info("파일 메타데이터 업데이트")
                 Files.update_file_metadata_by_id(
                     file.id,
                     {
@@ -950,9 +989,10 @@ def process_file(
                     "content": text_content,
                 }
         except Exception as e:
+            log.error(f"벡터 DB 저장 중 오류 발생: {str(e)}")
             raise e
     except Exception as e:
-        log.exception(e)
+        log.exception(f"파일 처리 중 오류 발생: {str(e)}")
         if "No pandoc was found" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
